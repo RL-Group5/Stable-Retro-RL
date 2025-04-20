@@ -155,12 +155,12 @@ def main():
             meta_lr=1e-3, inner_lr=1e-4,
             inner_steps=1, meta_batch_size=4,
             callback=combined_cb,
-            steps_batch=256, steps_episode=256,
+            steps_batch=512, steps_episode=256,
             updates_per_iteration=4,
             lr=2.5e-4, gamma=0.99
         )
         # Meta-train
-        meta.meta_train(meta_iterations=20)
+        meta.meta_train(meta_iterations=250001)
 
         # Run meta-agent with correct obs shape preprocessing
         play_env = DummyVecEnv([make_env_fn(args.game, args.state, args.scenario)])
@@ -199,13 +199,13 @@ def main():
         model = PPO(
             venv,
             callback=combined_cb,
-            steps_batch=256,
+            steps_batch=2048,
             steps_episode=256,
             updates_per_iteration=4,
             lr=2.5e-4,
             gamma=0.99,
         )
-        model.learn(steps=500)
+        model.learn(steps=1000000)
         model.save("./checkpoints/ppo_model_final")
         print("Done training.")
 
