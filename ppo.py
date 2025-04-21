@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 
+# {'lr': 0.00036273949280554415, 'clr': 0.00027539943527406523, 'eps': 0.2978548811971866, 'lreps': 1.0395397543281306e-07, 'gamma': 0.9328669115748676, 'steps_batch': 824, 'updates_per_iteration': 6, 'n_envs': 4, 'frame_skip': 4, 'stickprob': 0.4932402028812446}
 
 class CNNPolicy(nn.Module):
     def __init__(self, input_shape, num_actions):
@@ -69,12 +70,12 @@ class PPO:
     def _init_hyperparameters(self, hyperparameters={}):
         self.steps_batch = hyperparameters.get("steps_batch", 2000)
         self.steps_episode = hyperparameters.get("steps_episode", 2000)
-        self.gamma = hyperparameters.get("gamma", .99)
-        self.updates_per_iteration = hyperparameters.get("updates_per_iteration", 8)
-        self.lr = hyperparameters.get("lr", 2.5e-4)
-        self.clr = hyperparameters.get("clr", 2.5e-4)
-        self.eps = hyperparameters.get("eps", 0.1)
-        self.lreps = hyperparameters.get("lreps", 1e-6)
+        self.gamma = hyperparameters.get("gamma", 0.9328669115748676)
+        self.updates_per_iteration = hyperparameters.get("updates_per_iteration", 6)
+        self.lr = hyperparameters.get("lr", 0.00036273949280554415)
+        self.clr = hyperparameters.get("clr", 0.00027539943527406523)
+        self.eps = hyperparameters.get("eps", 0.2978548811971866)
+        self.lreps = hyperparameters.get("lreps", 1.0395397543281306e-07)
 
     def episodes(self):
         batch_obs = []
@@ -112,7 +113,6 @@ class PPO:
                 else:
                     action = np.array([int(acts)])
                 
-
                 self.num_timesteps += 1
                 if self.callback:
                     self.callback.model = self
@@ -150,10 +150,7 @@ class PPO:
         batch_prob = torch.cat(batch_prob, dim=0)
         batch_returns = self.compute_returns(batch_rewards)
         self.reward_history.append(total_reward / len(batch_lens))
-
         return batch_obs, batch_acts, batch_prob, batch_returns, batch_lens
-
-
 
 
     def learn(self, steps):
@@ -222,7 +219,6 @@ class PPO:
         # all_returns is list of lists of arrays; stack into one 2D array
         stacked = np.stack(all_returns, axis=0)      # shape (n_eps, ep_len)
         flat = stacked.reshape(-1)                   # shape (n_eps*ep_len,)
-
         return torch.from_numpy(flat.astype(np.float32))
     
     def predict(self, obs: np.ndarray):

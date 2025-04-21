@@ -192,20 +192,20 @@ def main():
 
     else:
         # Vanilla PPO training
-        venv = build_vec_env(8)
+        venv = build_vec_env(3)
         venv = VecFrameStack(venv, n_stack=4)
         venv = VecTransposeImage(venv)
 
         model = PPO(
             venv,
             callback=combined_cb,
-            steps_batch=256,
-            steps_episode=256,
+            steps_batch=824,
+            steps_episode=824,
             updates_per_iteration=4,
             lr=2.5e-4,
             gamma=0.99,
         )
-        model.learn(steps=1000000)
+        model.learn(steps=600000)
         model.save("./checkpoints/ppo_model_final")
         print("Done training.")
 
