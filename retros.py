@@ -199,7 +199,7 @@ def main():
         model = PPO(
             venv,
             callback=combined_cb,
-            steps_batch=2048,
+            steps_batch=256,
             steps_episode=256,
             updates_per_iteration=4,
             lr=2.5e-4,
