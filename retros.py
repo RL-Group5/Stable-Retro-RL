@@ -113,7 +113,7 @@ class CombinedCallback(BaseCallback):
 
 def make_env_fn(game, state, scenario):
     def _init():
-        env = make_retro(game=game, state=state, scenario=scenario)
+        env = make_retro(game=game, state="LiuKangVsShaoKahn_VeryHard_15", scenario=scenario)
         env = wrap_deepmind_retro(env)
         return env
     return _init
@@ -202,8 +202,6 @@ def main():
             steps_batch=824,
             steps_episode=824,
             updates_per_iteration=4,
-            lr=2.5e-4,
-            gamma=0.99,
         )
         model.learn(steps=600000)
         model.save("./checkpoints/ppo_model_final")
