@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 from typing import List, Tuple, Dict
 import os
+##{'manager_lr': 0.0001467550968120156, 'worker_lr': 0.00036729931252875995, 'clip_ratio': 0.2366066099777788, 'gamma': 0.9517816171672592, 'gae_lambda': 0.8167624732003352, 'option_duration': 6, 'steps_per_epoch': 512, 'train_epochs': 9, 'n_envs': 2, 'frame_skip': 8, 'stickprob': 0.08746326782814651}
+from torch.utils.tensorboard import SummaryWriter
 
 # Define action groups for Mortal Kombat II
 ACTION_GROUPS = {
@@ -21,11 +23,11 @@ class ManagerNetwork(nn.Module):
         
         self.conv = nn.Sequential(
             nn.Conv2d(c, 32, kernel_size=8, stride=4),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(),
+            nn.GELU(),
         )
 
         # Calculate conv output size
@@ -81,11 +83,11 @@ class WorkerNetwork(nn.Module):
         
         self.conv = nn.Sequential(
             nn.Conv2d(c, 32, kernel_size=8, stride=4),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(),
+            nn.GELU(),
         )
 
         # Calculate conv output size
@@ -132,7 +134,7 @@ class WorkerNetwork(nn.Module):
         """Select low-level actions using the worker network"""
         with torch.no_grad():
             if obs.dim() == 3:
-                obs = obs.unsqueeze(0)  # Add batch dimension if needed
+                obs = obs.unsqueeze(0)  # Add batch dimension just cause why not
             option_embeddings = options.view(-1, 1).float()  # Ensure correct shape
             action_logits, _ = self.forward(obs, option_embeddings)
             action_probs = F.softmax(action_logits, dim=-1)
@@ -142,302 +144,238 @@ class WorkerNetwork(nn.Module):
         return actions, log_probs
 
 class HPPO:
-    """Hierarchical PPO implementation"""
-    def __init__(self, env, device="cuda", **kwargs):
+    """Hierarchical PPO implementation with fixed defaults, GAE, advantage normalization, entropy bonus"""
+    def __init__(self, env, device="cuda",writer=None,**kwargs):
+        
         self.env = env
         self.device = torch.device(device)
-        self.callback = kwargs.pop("callback", None)
+        self.writer = writer or SummaryWriter(log_dir="./tb_logs/hppo_default")
         self._init_hyperparameters(kwargs)
         
-        # Initialize networks
         obs_shape = env.observation_space.shape
-        print(f"Observation shape: {obs_shape}")
         self.num_options = len(ACTION_GROUPS)
-        self.action_dim = env.action_space.n
-        print(f"Action dimension: {self.action_dim}")
-        print(f"Number of options: {self.num_options}")
+        self.action_dim  = env.action_space.n
+        self.n_envs      = getattr(env, "num_envs", 1)
 
+        # networks
         self.manager = ManagerNetwork(obs_shape, self.num_options).to(self.device)
-        self.worker = WorkerNetwork(obs_shape, self.action_dim).to(self.device)
+        self.worker  = WorkerNetwork(obs_shape, self.action_dim).to(self.device)
 
-        # Setup optimizers
+        # optimizers
         self.manager_optimizer = torch.optim.AdamW(
-            self.manager.parameters(), 
+            self.manager.parameters(),
             lr=self.manager_lr,
             eps=self.adam_eps
         )
-        self.worker_optimizer = torch.optim.AdamW(
+        self.worker_optimizer  = torch.optim.AdamW(
             self.worker.parameters(),
             lr=self.worker_lr,
             eps=self.adam_eps
         )
 
-        # Initialize trackers
-        self.reward_history = []
+        # logs
+        self.reward_history       = []
         self.manager_loss_history = []
-        self.worker_loss_history = []
-        self.num_timesteps = 0
-
-    def _init_hyperparameters(self, hyperparameters: Dict):
-        """Initialize hyperparameters"""
-        self.manager_lr = hyperparameters.get("manager_lr", 3e-4)
-        self.worker_lr = hyperparameters.get("worker_lr", 3e-4)
-        self.adam_eps = hyperparameters.get("adam_eps", 1e-5)
-        self.gamma = hyperparameters.get("gamma", 0.99)
-        self.gae_lambda = hyperparameters.get("gae_lambda", 0.95)
-        self.clip_ratio = hyperparameters.get("clip_ratio", 0.2)
-        self.option_duration = hyperparameters.get("option_duration", 8)
-        self.steps_per_epoch = hyperparameters.get("steps_per_epoch", 2048)
-        self.train_epochs = hyperparameters.get("train_epochs", 10)
+        self.worker_loss_history  = []
+        self.num_timesteps        = 0
+        
+    def _init_hyperparameters(self, hp: Dict):
+        # sensible defaults
+        self.manager_lr      = hp.get("manager_lr",    3e-4)
+        self.worker_lr       = hp.get("worker_lr",     3e-4)
+        self.adam_eps        = hp.get("adam_eps",      1e-8)     
+        self.gamma           = hp.get("gamma",         0.98)
+        self.gae_lambda      = hp.get("gae_lambda",    0.98)
+        self.clip_ratio      = hp.get("clip_ratio",    0.2)     
+        self.option_duration = hp.get("option_duration", 6)
+        self.steps_per_epoch = hp.get("steps_per_epoch", 2048)
+        self.train_epochs    = hp.get("train_epochs",    10)
+        self.entropy_coef    = hp.get("entropy_coef",  0.01)
 
     def learn(self, total_steps: int):
-        """Main training loop"""
-        num_epochs = total_steps // self.steps_per_epoch
-        obs = self.env.reset()
+        epochs = total_steps // self.steps_per_epoch
+        reset_out = self.env.reset()
+        if isinstance(reset_out, tuple):
+            obs = reset_out[0]
+        else:
+            obs = reset_out
+
         current_options = None
-        option_step_counter = 0
-        episode_rewards = np.zeros(self.env.num_envs)
+        option_steps    = 0
+        episode_rewards = np.zeros(self.n_envs)
 
-        for epoch in range(num_epochs):
-            # --- initialize per‐epoch trackers ---
-            episode_step_counters = np.zeros(self.env.num_envs, dtype=int)
-            batch_obs = []
-            batch_options = []
-            batch_actions = []
-            batch_option_probs = []
-            batch_action_probs = []
-            batch_rewards = []
-            batch_dones = []
-            batch_lens = []
+        for epoch in range(1, epochs+1):
+            # buffers
+            buf_obs, buf_opts, buf_acts = [], [], []
+            buf_opt_lp, buf_act_lp      = [], []
+            buf_rews, buf_dones         = [], []
+            buf_lens                     = []
 
-            # --- collect experience for one epoch ---
-            for step in range(self.steps_per_epoch):
-                self.num_timesteps += self.env.num_envs
+            # collect rollout
+            for _ in range(self.steps_per_epoch):
+                self.num_timesteps += self.n_envs
 
-                # callbacks
-                if self.callback:
-                    if isinstance(self.callback, list):
-                        for cb in self.callback:
-                            cb.model = self
-                            cb.num_timesteps = self.num_timesteps
-                            cb._on_step()
-                    else:
-                        self.callback.model = self
-                        self.callback.num_timesteps = self.num_timesteps
-                        self.callback._on_step()
-
-                # prepare observation tensor
-                obs_tensor = torch.FloatTensor(obs).to(self.device)
-                if obs_tensor.dim() == 4:  # stacked frames
-                    N, C, H, W = obs_tensor.shape
-                    obs_tensor = obs_tensor.view(N, -1, H, W)
+                # prepare obs tensor
+                obs_t = torch.FloatTensor(obs).to(self.device)
+                if obs_t.dim() == 4:  # flatten stacked frames
+                    N, C, H, W = obs_t.shape
+                    obs_t = obs_t.view(N, -1, H, W)
 
                 # choose or continue option
-                if current_options is None or option_step_counter >= self.option_duration:
-                    current_options, option_log_probs = self.manager.select_option(obs_tensor)
-                    option_step_counter = 0
+                if current_options is None or option_steps >= self.option_duration:
+                    current_options, opt_logp = self.manager.select_option(obs_t)
+                    option_steps = 0
+                else:
+                    opt_logp = torch.zeros(self.n_envs, device=self.device)
 
-                # choose low‐level action
-                actions, action_log_probs = self.worker.select_action(obs_tensor, current_options)
+                # choose action
+                actions, act_logp = self.worker.select_action(obs_t, current_options)
 
-                # step the env
-                next_obs, rewards, dones, infos = self.env.step(actions.cpu().numpy())
+                # --- STEP (handle 4‑ or 5‑tuple returns) ---
+                step_out = self.env.step(actions.cpu().numpy())
+                if len(step_out) == 4:
+                    next_obs, rewards, dones, infos = step_out
+                else:  # length 5
+                    next_obs, rewards, terminated, truncated, infos = step_out
+                    dones = np.logical_or(terminated, truncated)
 
-                # track episode length per env
-                episode_step_counters += 1
-                for i, done in enumerate(dones):
-                    if done:
-                        batch_lens.append(int(episode_step_counters[i]))
-                        episode_step_counters[i] = 0
+                # record transition
+                buf_obs.append(obs)
+                buf_opts.append(current_options.cpu().numpy())
+                buf_acts.append(actions.cpu().numpy())
+                buf_opt_lp.append(opt_logp.cpu().numpy())
+                buf_act_lp.append(act_logp.cpu().numpy())
+                buf_rews.append(rewards)
+                buf_dones.append(dones)
 
+                # track rewards & resets
                 episode_rewards += rewards
-
-                # store transition
-                batch_obs.append(obs)
-                batch_options.append(current_options.cpu().numpy())
-                batch_actions.append(actions.cpu().numpy())
-                batch_option_probs.append(option_log_probs.cpu().numpy())
-                batch_action_probs.append(action_log_probs.cpu().numpy())
-                batch_rewards.append(rewards)
-                batch_dones.append(dones)
-
-                option_step_counter += 1
+                option_steps    += 1
                 obs = next_obs
 
-                # reset finished envs
-                if any(dones):
-                    for i, done in enumerate(dones):
-                        if done:
-                            self.reward_history.append(episode_rewards[i])
-                            episode_rewards[i] = 0
-                    if all(dones):
-                        current_options = None
-                        obs = self.env.reset()
+                for i, done in enumerate(dones):
+                    if done:
+                        buf_lens.append(episode_rewards[i])
+                        self.reward_history.append(episode_rewards[i])
+                        episode_rewards[i] = 0
 
-            # --- prepare batches for update ---
-            batch_obs = torch.FloatTensor(np.array(batch_obs)).to(self.device)
-            if batch_obs.dim() == 5:  # (T, N, C, H, W)
-                T, N, C, H, W = batch_obs.shape
-                batch_obs = batch_obs.view(T * N, -1, H, W)
+                if all(dones):
+                    current_options = None
+                    reset_out = self.env.reset()
+                    obs = reset_out[0] if isinstance(reset_out, tuple) else reset_out
 
-            batch_options = torch.LongTensor(np.array(batch_options)).to(self.device)
-            batch_actions = torch.LongTensor(np.array(batch_actions)).to(self.device)
-            batch_rewards = torch.FloatTensor(np.array(batch_rewards)).to(self.device)
+            # convert buffers
+            obs_buf   = torch.FloatTensor(np.array(buf_obs)).to(self.device)
+            rew_buf   = torch.FloatTensor(np.array(buf_rews)).to(self.device)
+            done_buf  = torch.FloatTensor(np.array(buf_dones)).to(self.device)
+            opt_buf   = torch.LongTensor(np.array(buf_opts)).to(self.device)
+            act_buf   = torch.LongTensor(np.array(buf_acts)).to(self.device)
+            opt_lp_old= torch.FloatTensor(np.array(buf_opt_lp)).to(self.device)
+            act_lp_old= torch.FloatTensor(np.array(buf_act_lp)).to(self.device)
 
-            # --- PPO updates ---
-            self.update_manager(batch_obs, batch_options, batch_rewards)
-            self.update_worker(batch_obs, batch_actions, batch_options, batch_rewards)
+            # flatten obs from (T,N,C,H,W) → (TN, C', H, W)
+            if obs_buf.dim()==5:
+                T,N,C,H,W = obs_buf.shape
+                obs_buf = obs_buf.view(T*N, -1, H, W)
 
-            # --- print training info ---
-            avg_len     = np.mean(batch_lens) if batch_lens else 0
-            N_eps       = len(batch_lens)
-            recent_r    = self.reward_history[-N_eps:] if N_eps else []
-            mean_reward = np.mean(recent_r) if recent_r else 0
-            mgr_loss    = self.manager_loss_history[-1] if self.manager_loss_history else 0
-            wk_loss     = self.worker_loss_history[-1]  if self.worker_loss_history else 0
-
-            print(
-                f"Epoch {epoch+1}/{num_epochs}"
-                f" | Steps {self.num_timesteps}"
-                f" | AvgEpLen {avg_len:.2f}"
-                f" | Reward {mean_reward:.2f}"
-                f" | ManagerLoss {mgr_loss:.4f}"
-                f" | WorkerLoss {wk_loss:.4f}"
+            # --- manager update ---
+            adv_m, ret_m = self._compute_advantages(
+                rew_buf, done_buf, kind="manager", obs=obs_buf, options=None, actions=None
+            )
+            self._ppo_update(
+                self.manager, self.manager_optimizer,
+                obs_buf, opt_buf.view(-1), opt_lp_old.view(-1),
+                adv_m, ret_m, self.manager_loss_history
             )
 
+            # --- worker update ---
+            adv_w, ret_w = self._compute_advantages(
+                rew_buf, done_buf, kind="worker",
+                obs=obs_buf, options=opt_buf.view(-1,1), actions=act_buf.view(-1)
+            )
+            self._ppo_update(
+                self.worker, self.worker_optimizer,
+                obs_buf, act_buf.view(-1), act_lp_old.view(-1),
+                adv_w, ret_w, self.worker_loss_history,
+                extra_inputs=(opt_buf.view(-1,1),)
+            )
 
-    def update_manager(self, obs, options, rewards):
-        """Update manager policy"""
-        if len(obs.shape) == 5:  # If stacked observations
-            T, N, C, H, W = obs.shape
-            obs = obs.view(T * N, -1, H, W)  # Combine time and batch dims, and stack channels
-            
+            # log
+            avg_rew = np.mean(self.reward_history[-len(buf_lens):]) if buf_lens else 0
+            self.writer.add_scalar("Reward/Average", avg_rew, self.num_timesteps)
+            self.writer.add_scalar("Loss/Manager", self.manager_loss_history[-1], self.num_timesteps)
+            self.writer.add_scalar("Loss/Worker", self.worker_loss_history[-1], self.num_timesteps)
+
+            print(f"Epoch {epoch}/{epochs}"
+                  f" | Steps {self.num_timesteps}"
+                  f" | AvgRew {avg_rew:.2f}"
+                  f" | MgrLoss {self.manager_loss_history[-1]:.4f}"
+                  f" | WkLoss {self.worker_loss_history[-1]:.4f}")
+            self.writer.flush()
+        self.writer.close()
+    def _compute_advantages(self, rewards, dones, kind, obs, options=None, actions=None):
+        # values from forward pass
         with torch.no_grad():
-            option_logits, values = self.manager(obs)
-            advantages = self.compute_advantages(rewards, values)
-            returns = advantages + values.view(-1)
-        
-        # PPO update
-        for _ in range(self.train_epochs):
-            # Forward pass
-            new_option_logits, new_values = self.manager(obs)
-            
-            # Compute ratio and clipped objective
-            log_probs = F.log_softmax(new_option_logits, dim=-1)
-            with torch.no_grad():
-                old_log_probs = F.log_softmax(option_logits, dim=-1)
-            
-            ratio = torch.exp(
-                log_probs.gather(1, options.view(-1, 1)) - 
-                old_log_probs.gather(1, options.view(-1, 1))
-            )
-            
-            # Policy loss
-            advantages_tensor = advantages.detach().unsqueeze(1)
-            clip_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * advantages_tensor
-            policy_loss = -torch.min(ratio * advantages_tensor, clip_adv).mean()
-            
-            # Value loss
-            value_loss = F.mse_loss(new_values.view(-1), returns.detach())
-            
-            # Total loss
-            total_loss = policy_loss + 0.5 * value_loss
-            
-            # Update
-            self.manager_optimizer.zero_grad()
-            total_loss.backward()
-            self.manager_optimizer.step()
-            
-            self.manager_loss_history.append(total_loss.item())
-
-    def update_worker(self, obs, actions, options, rewards):
-        """Update worker policy"""
-        if len(obs.shape) == 5:  # If stacked observations
-            T, N, C, H, W = obs.shape
-            obs = obs.view(T * N, -1, H, W)  # Combine time and batch dims, and stack channels
-            
-        # Prepare option embeddings - should be (batch_size, 1)
-        option_embeddings = options.view(-1, 1).float()
-        
-        with torch.no_grad():
-            action_logits, values = self.worker(obs, option_embeddings)
-            advantages = self.compute_advantages(rewards, values)
-            returns = advantages + values.view(-1)
-        
-        # PPO update
-        for _ in range(self.train_epochs):
-            # Forward pass
-            new_action_logits, new_values = self.worker(obs, option_embeddings)
-            
-            # Compute ratio and clipped objective
-            log_probs = F.log_softmax(new_action_logits, dim=-1)
-            with torch.no_grad():
-                old_log_probs = F.log_softmax(action_logits, dim=-1)
-            
-            ratio = torch.exp(
-                log_probs.gather(1, actions.view(-1, 1)) - 
-                old_log_probs.gather(1, actions.view(-1, 1))
-            )
-            
-            # Policy loss
-            advantages_tensor = advantages.detach().unsqueeze(1)
-            clip_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * advantages_tensor
-            policy_loss = -torch.min(ratio * advantages_tensor, clip_adv).mean()
-            
-            # Value loss
-            value_loss = F.mse_loss(new_values.view(-1), returns.detach())
-            
-            # Total loss
-            total_loss = policy_loss + 0.5 * value_loss
-            
-            # Update
-            self.worker_optimizer.zero_grad()
-            total_loss.backward()
-            self.worker_optimizer.step()
-            
-            self.worker_loss_history.append(total_loss.item())
-
-    def compute_advantages(self, rewards: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
-        """Compute GAE advantages"""
-        # Reshape rewards if needed
-        if len(rewards.shape) == 1:
-            rewards = rewards.view(-1, self.env.num_envs)
-        
-        # Reshape values if needed
-        if len(values.shape) == 1:
-            values = values.view(-1, self.env.num_envs)
-        
-        advantages = torch.zeros_like(rewards)
-        last_gae = torch.zeros(self.env.num_envs).to(self.device)
-        
-        for t in reversed(range(rewards.size(0))):
-            if t == rewards.size(0) - 1:
-                next_value = torch.zeros_like(values[0])
+            if kind=="manager":
+                _, vals = self.manager(obs)
             else:
-                next_value = values[t + 1]
-            
-            delta = rewards[t] + self.gamma * next_value - values[t]
-            advantages[t] = last_gae = delta + self.gamma * self.gae_lambda * last_gae
-            
-        # Flatten advantages to match the batch dimension
-        return advantages.view(-1)
+                vals = self.worker(obs, options)[1]
+        vals = vals.view(-1).cpu().numpy()
+        rews = rewards.cpu().numpy()
+        dones = dones.cpu().numpy()
+        T, N = rews.shape
+        vals = vals.reshape(T, N)
+
+        advs = np.zeros((T, N), dtype=np.float32)
+        last = np.zeros(N, dtype=np.float32)
+        for t in reversed(range(T)):
+            mask = 1.0 - dones[t]
+            next_v = 0 if t==T-1 else vals[t+1]
+            delta = rews[t] + self.gamma*next_v*mask - vals[t]
+            last = delta + self.gamma*self.gae_lambda*mask*last
+            advs[t] = last
+
+        flat_adv = torch.FloatTensor(advs.reshape(-1)).to(self.device)
+        norm_adv = (flat_adv - flat_adv.mean())/(flat_adv.std()+1e-8)
+        flat_ret = norm_adv + torch.FloatTensor(vals.reshape(-1)).to(self.device)
+        return norm_adv, flat_ret
+
+    def _ppo_update(self, network, optimizer, obs, acts, old_logp, adv, ret, loss_hist, extra_inputs=()):
+        for _ in range(self.train_epochs):
+            if extra_inputs:
+                logits, vals = network(obs, *extra_inputs)
+            else:
+                logits, vals = network(obs)
+            vals = vals.view(-1)
+            logp_all = F.log_softmax(logits, dim=-1)
+            logp = logp_all.gather(1, acts.unsqueeze(1)).squeeze(1)
+
+            ratio = torch.exp(logp - old_logp)
+            clip_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio)*adv
+            pol_loss = -torch.min(ratio*adv, clip_adv).mean()
+            val_loss = F.mse_loss(vals, ret)
+            entropy = -(logp_all * logp_all.exp()).sum(dim=1).mean()
+
+            loss = pol_loss + 0.5*val_loss - self.entropy_coef*entropy
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            loss_hist.append(loss.item())
 
     def save(self, path: str):
-        """Save model weights"""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save({
             'manager_state_dict': self.manager.state_dict(),
-            'worker_state_dict': self.worker.state_dict(),
-            'manager_optimizer': self.manager_optimizer.state_dict(),
-            'worker_optimizer': self.worker_optimizer.state_dict(),
+            'worker_state_dict':  self.worker.state_dict(),
+            'manager_optimizer':  self.manager_optimizer.state_dict(),
+            'worker_optimizer':   self.worker_optimizer.state_dict(),
         }, path)
-        print(f"Model saved to {path}", flush=True)
+        print(f"Model saved to {path}")
 
     def load(self, path: str):
-        """Load model weights"""
-        checkpoint = torch.load(path)
-        self.manager.load_state_dict(checkpoint['manager_state_dict'])
-        self.worker.load_state_dict(checkpoint['worker_state_dict'])
-        self.manager_optimizer.load_state_dict(checkpoint['manager_optimizer'])
-        self.worker_optimizer.load_state_dict(checkpoint['worker_optimizer'])
-        print(f"Model loaded from {path}") 
+        ckpt = torch.load(path)
+        self.manager.load_state_dict(ckpt['manager_state_dict'])
+        self.worker.load_state_dict(ckpt['worker_state_dict'])
+        self.manager_optimizer.load_state_dict(ckpt['manager_optimizer'])
+        self.worker_optimizer.load_state_dict(ckpt['worker_optimizer'])
+        print(f"Model loaded from {path}")

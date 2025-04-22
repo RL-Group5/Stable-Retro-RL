@@ -203,6 +203,11 @@ def main():
             steps_episode=824,
             updates_per_iteration=4,
         )
+        
+        if args.model_path:
+            print(f"Loading pretrained PPO from {args.model_path}")
+            model.load_model(args.model_path)
+
         model.learn(steps=600000)
         model.save("./checkpoints/ppo_model_final")
         print("Done training.")

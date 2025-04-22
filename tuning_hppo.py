@@ -20,7 +20,7 @@ def make_env(frame_skip, stickprob):
         )
         env = StochasticFrameSkip(env, n=frame_skip, stickprob=stickprob)
         env = WarpFrame(env)
-        env = ClipRewardEnv(env)
+        #env = ClipRewardEnv(env)
         return env
     return _thunk
 
@@ -34,7 +34,7 @@ def objective(trial):
     option_duration = trial.suggest_int("option_duration", 4, 16)
     steps_per_epoch = trial.suggest_categorical("steps_per_epoch", [512, 1024, 2048])
     train_epochs    = trial.suggest_int("train_epochs",    1, 10)
-    n_envs          = trial.suggest_categorical("n_envs", [2, 4, 8])
+    n_envs          = trial.suggest_categorical("n_envs", [3])
     frame_skip      = trial.suggest_categorical("frame_skip", [2, 4, 8])
     stickprob       = trial.suggest_float("stickprob",      0.0, 0.5)
 
