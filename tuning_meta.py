@@ -27,8 +27,8 @@ def make_env_fn(game, state, scenario=None):
 GAME = "MortalKombatII-Genesis"
 STATE = "LiuKangVsShaoKahn_VeryHard_15"
 N_ENVS = 3
-TRAIN_META_ITERS = 15
-EVAL_EPISODES    = 3
+TRAIN_META_ITERS = 10
+EVAL_EPISODES    = 5
 
 
 def objective(trial):
@@ -45,30 +45,36 @@ def objective(trial):
         venv = VecTransposeImage(venv)
         return venv
 
-    # instantiate Meta with GPU support via SB3 device arg
-    meta = Meta(
-        base_ppo_cls=PPO,
-        task_sampler=task_sampler,
-        device="cuda",                # use GPU for all neural-net computations
-        meta_lr=meta_lr,
-        inner_lr=inner_lr,
-        inner_steps=inner_steps,
-        meta_batch_size=meta_batch_sz,
-        # forward default PPO settings
-        lr=2.5e-4,
-        gamma=0.99,
-        steps_batch=256,
-        updates_per_iteration=2,
-        callback=None
-    )
+    try:
+        # instantiate Meta with GPU support via SB3 device arg
+        meta = Meta(
+            base_ppo_cls=PPO,
+            task_sampler=task_sampler,
+            device="cuda",                # use GPU for all neural-net computations
+            meta_lr=meta_lr,
+            inner_lr=inner_lr,
+            inner_steps=inner_steps,
+            meta_batch_size=meta_batch_sz,
+            # forward default PPO settings
+            lr=2.5e-4,
+            gamma=0.99,
+            steps_batch=256,
+            updates_per_iteration=2,
+            callback=None
+        )
 
-    # meta-train
-    meta.meta_train(meta_iterations=TRAIN_META_ITERS)
+        # meta-train
+        meta.meta_train(meta_iterations=TRAIN_META_ITERS)
 
-    # evaluate on fresh tasks
-    eval_env = task_sampler()
-    avg_ret = meta.evaluate(eval_env, episodes=EVAL_EPISODES)
-    return avg_ret
+        # evaluate on fresh tasks
+        eval_env = task_sampler()
+        avg_ret = meta.evaluate(eval_env, episodes=EVAL_EPISODES)
+        eval_env.close()
+        return avg_ret
+
+    except Exception as e:
+        print(f"Trial failed with error: {str(e)}")
+        return float('-inf')  # Return worst possible value on error
 
 
 if __name__ == "__main__":
