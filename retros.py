@@ -11,6 +11,7 @@ import retro
 from retro import Actions
 from ppo import PPO
 from meta import Meta
+from datetime import datetime
 
 
 class StochasticFrameSkip(gym.Wrapper):
@@ -130,7 +131,8 @@ def main():
     args = parser.parse_args()
 
     # TensorBoard writer
-    tb_dir = os.path.join("./tb_logs", args.game)
+    tb_dir = os.path.join("./tb_logs", args.game, datetime.now().strftime("%H:%M:%S"))
+    
     writer = SummaryWriter(tb_dir)
     tb_callback = TensorboardCallback(writer, log_freq=1000)
 
@@ -192,7 +194,7 @@ def main():
 
     else:
         # Vanilla PPO training
-        venv = build_vec_env(3)
+        venv = build_vec_env(10)
         venv = VecFrameStack(venv, n_stack=4)
         venv = VecTransposeImage(venv)
 
@@ -201,9 +203,10 @@ def main():
             callback=combined_cb,
             steps_batch=824,
             steps_episode=824,
-            updates_per_iteration=4,
+            updates_per_iteration=5,
         )
-        model.learn(steps=600000)
+        model.load_model("./checkpoints/model_200000")
+        model.learn(steps=300_000)
         model.save("./checkpoints/ppo_model_final")
         print("Done training.")
 

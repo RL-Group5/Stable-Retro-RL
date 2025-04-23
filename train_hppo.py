@@ -1,8 +1,10 @@
 import argparse
+from datetime import datetime
 import os
 import gymnasium as gym
 import retro
 from retro import Actions
+from retros import CombinedCallback
 import torch
 import numpy as np
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecFrameStack, VecTransposeImage
@@ -99,7 +101,7 @@ class TensorboardCallback(BaseCallback):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--total-steps", type=int, default=1000000)
-    parser.add_argument("--n-envs", type=int, default=4)
+    parser.add_argument("--n-envs", type=int, default=10)
     parser.add_argument("--option-duration", type=int, default=8)
     parser.add_argument("--steps-per-epoch", type=int, default=2048)
     parser.add_argument("--game", default="MortalKombatII-Genesis")
@@ -108,10 +110,13 @@ def main():
     args = parser.parse_args()
 
     # Set up logging
-    tb_dir = os.path.join("./tb_logs", args.game)
+    tb_dir = os.path.join("./tb_logs", args.game, datetime.now().strftime("%H%M%S"))
     writer = SummaryWriter(tb_dir)
     tb_callback = TensorboardCallback(writer, log_freq=1000)
+    
     save_cb = SaveOnStepCallback(save_freq=50000, save_path="./checkpoints_hppo", verbose=1)
+    combined_cb = CombinedCallback([tb_callback, save_cb])
+    
 
     # Create vectorized environment
     env_fns = [make_env_fn(args.game, args.state, args.scenario) for _ in range(args.n_envs)]
@@ -133,7 +138,7 @@ def main():
         device="cuda" if torch.cuda.is_available() else "cpu",
         option_duration=args.option_duration,
         steps_per_epoch=args.steps_per_epoch,
-        callback=[tb_callback, save_cb]
+        callback=combined_cb,
     )
 
     try:

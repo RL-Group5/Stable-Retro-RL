@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 from typing import List, Tuple, Dict
 import os
+from torch.utils.tensorboard import SummaryWriter
 
 # Define action groups for Mortal Kombat II
 ACTION_GROUPS = {
@@ -143,11 +144,11 @@ class WorkerNetwork(nn.Module):
 
 class HPPO:
     """Hierarchical PPO implementation"""
-    def __init__(self, env, device="cuda", **kwargs):
+    def __init__(self, env, device="cuda", **hyperparameters):
         self.env = env
         self.device = torch.device(device)
-        self.callback = kwargs.pop("callback", None)
-        self._init_hyperparameters(kwargs)
+        self.callback = hyperparameters.pop("callback", None)
+        self._init_hyperparameters(hyperparameters)
         
         # Initialize networks
         obs_shape = env.observation_space.shape
@@ -215,16 +216,15 @@ class HPPO:
                 self.num_timesteps += self.env.num_envs
 
                 # callbacks
-                if self.callback:
-                    if isinstance(self.callback, list):
-                        for cb in self.callback:
-                            cb.model = self
-                            cb.num_timesteps = self.num_timesteps
-                            cb._on_step()
-                    else:
-                        self.callback.model = self
-                        self.callback.num_timesteps = self.num_timesteps
-                        self.callback._on_step()
+                if self.callback and isinstance(self.callback, list):
+                    for cb in self.callback:
+                        cb.model = self
+                        cb.num_timesteps = self.num_timesteps
+                        cb._on_step()
+                elif self.callback:
+                    self.callback.model = self
+                    self.callback.num_timesteps = self.num_timesteps
+                    self.callback._on_step()
 
                 # prepare observation tensor
                 obs_tensor = torch.FloatTensor(obs).to(self.device)
