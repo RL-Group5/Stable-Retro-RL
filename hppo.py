@@ -214,6 +214,7 @@ class HPPO:
             # collect rollout
             for _ in range(self.steps_per_epoch):
                 self.num_timesteps += self.n_envs
+
                 # prepare obs tensor
                 obs_t = torch.FloatTensor(obs).to(self.device)
                 if obs_t.dim() == 4:  # flatten stacked frames
@@ -305,14 +306,13 @@ class HPPO:
             self.writer.add_scalar("Loss/Manager", self.manager_loss_history[-1], self.num_timesteps)
             self.writer.add_scalar("Loss/Worker", self.worker_loss_history[-1], self.num_timesteps)
 
-
             print(f"Epoch {epoch}/{epochs}"
                   f" | Steps {self.num_timesteps}"
                   f" | AvgRew {avg_rew:.2f}"
                   f" | MgrLoss {self.manager_loss_history[-1]:.4f}"
                   f" | WkLoss {self.worker_loss_history[-1]:.4f}")
             self.writer.flush()
-        if epoch % 2 == 0:
+            if epoch % 10 == 0:
                 print("saving gang")
                 self.save(f"./checkpoints_hppo/model_{self.num_timesteps}.pt")
         self.writer.close()

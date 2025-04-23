@@ -10,7 +10,7 @@ from stable_baselines3.common.atari_wrappers import ClipRewardEnv, WarpFrame
 from stable_baselines3.common.callbacks import BaseCallback
 from torch.utils.tensorboard import SummaryWriter
 from hppo import HPPO, ACTION_GROUPS
-
+from datetime import datetime
 
 class StochasticFrameSkip(gym.Wrapper):
     def __init__(self, env, n, stickprob):
@@ -121,7 +121,7 @@ def main():
     args = parser.parse_args()
 
     # TensorBoard setup
-    tb_dir = os.path.join("./tb_logs", args.game)
+    tb_dir = os.path.join("./tb_logs", args.game, datetime.now().strftime("%H%M%S"))
     writer = SummaryWriter(tb_dir)
     #tb_callback = TensorboardCallback(writer, log_freq=10)
     save_cb = SaveOnStepCallback(save_freq=8192, save_path="./checkpoints_hppo", verbose=1)
