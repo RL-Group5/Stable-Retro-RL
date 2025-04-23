@@ -111,7 +111,7 @@ class TensorboardCallback(BaseCallback):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--total-steps", type=int, default=1_000_000)
+    parser.add_argument("--total-steps", type=int, default=250000)
     parser.add_argument("--n-envs", type=int, default=8)
     parser.add_argument("--option-duration", type=int, default=8)
     parser.add_argument("--steps-per-epoch", type=int, default=1024)
@@ -124,7 +124,7 @@ def main():
     tb_dir = os.path.join("./tb_logs", args.game)
     writer = SummaryWriter(tb_dir)
     #tb_callback = TensorboardCallback(writer, log_freq=10)
-    save_cb = SaveOnStepCallback(save_freq=50000, save_path="./checkpoints_hppo", verbose=1)
+    save_cb = SaveOnStepCallback(save_freq=8192, save_path="./checkpoints_hppo", verbose=1)
 
     # Log hyperparameters
     for k, v in vars(args).items():
