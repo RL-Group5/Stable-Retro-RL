@@ -312,7 +312,7 @@ class HPPO:
                   f" | MgrLoss {self.manager_loss_history[-1]:.4f}"
                   f" | WkLoss {self.worker_loss_history[-1]:.4f}")
             self.writer.flush()
-        if epoch % 2 == 0:
+            if epoch % 50 == 0:
                 print("saving gang")
                 self.save(f"./checkpoints_hppo/model_{self.num_timesteps}.pt")
         self.writer.close()

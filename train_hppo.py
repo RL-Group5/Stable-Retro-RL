@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 import os
 import gymnasium as gym
 import retro
@@ -112,16 +113,16 @@ class TensorboardCallback(BaseCallback):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--total-steps", type=int, default=250000)
-    parser.add_argument("--n-envs", type=int, default=8)
+    parser.add_argument("--n-envs", type=int, default=7)
     parser.add_argument("--option-duration", type=int, default=8)
     parser.add_argument("--steps-per-epoch", type=int, default=1024)
     parser.add_argument("--game", default="MortalKombatII-Genesis")
-    parser.add_argument("--state", default="Level1.JaxVsBaraka")
+    parser.add_argument("--state", default="LiuKangVsShaoKahn_VeryHard_15")
     parser.add_argument("--scenario", default=None)
     args = parser.parse_args()
 
     # TensorBoard setup
-    tb_dir = os.path.join("./tb_logs", args.game)
+    tb_dir = os.path.join("./tb_logs", args.game, datetime.now().strftime("%H%M%S"))
     writer = SummaryWriter(tb_dir)
     #tb_callback = TensorboardCallback(writer, log_freq=10)
     save_cb = SaveOnStepCallback(save_freq=8192, save_path="./checkpoints_hppo", verbose=1)
@@ -153,6 +154,7 @@ def main():
     )
 
     try:
+        agent.load("./checkpoints_hppo/model_716800.pt")
         agent.learn(args.total_steps)
         agent.save("./checkpoints_hppo/MortalKombatII-Genesis_final.pt")
     except KeyboardInterrupt:
