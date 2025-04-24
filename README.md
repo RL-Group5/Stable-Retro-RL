@@ -68,7 +68,7 @@ CMD ["python3", "main.py", "--mode", "train", "--env", "MortalKombatII-Genesis"]
 
 **Detailed Breakdown:**
 -Libraries: Uses optuna, retro, and Stable-Baselines3 wrappers to handle environment and PPO logic.
-make_env() function: Initializes the Retro environment with a specific game state, applies StochasticFrameSkip, and wraps it with DeepMind-style preprocessing (WarpFrame). Returns an environment constructor.
+-make_env() function: Initializes the Retro environment with a specific game state, applies StochasticFrameSkip, and wraps it with DeepMind-style preprocessing (WarpFrame). Returns an environment constructor.
 -objective(trial): Samples hyperparameters such as:
     -lr: learning rate for actor
     -clr: learning rate for critic
