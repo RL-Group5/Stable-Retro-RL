@@ -67,13 +67,13 @@ CMD ["python3", "main.py", "--mode", "train", "--env", "MortalKombatII-Genesis"]
 **Purpose:**  This script performs automated hyperparameter tuning for the PPO agent using Optuna. The goal is to optimize PPO-specific parameters like learning rates, clipping epsilon, and GAE parameters within the Mortal Kombat II environment.
 
 **Detailed Breakdown:**
--Libraries: Uses optuna, retro, and Stable-Baselines3 wrappers to handle environment and PPO logic.
--make_env() function: Initializes the Retro environment with a specific game state, applies StochasticFrameSkip, and wraps it with DeepMind-style preprocessing (WarpFrame). Returns an environment constructor.
--objective(trial): Samples hyperparameters such as:
-    -lr: learning rate for actor
-    -clr: learning rate for critic
-    -gamma, gae_lambda: discount and GAE parameters
-    -steps_batch, updates_per_iteration, frame_skip, stickprob: sampling and dynamics tuning
+-`Libraries:` Uses optuna, retro, and Stable-Baselines3 wrappers to handle environment and PPO logic.
+-`make_env()` function: Initializes the Retro environment with a specific game state, applies StochasticFrameSkip, and wraps it with DeepMind-style preprocessing (WarpFrame). Returns an environment constructor.
+-`objective(trial)`: Samples hyperparameters such as:
+    -`lr`: learning rate for actor
+    -`clr`: learning rate for critic
+    -`gamma, gae_lambda`: discount and GAE parameters
+    -`steps_batch, updates_per_iteration, frame_skip, stickprob`: sampling and dynamics tuning
 -Trains the PPO agent using these parameters for 50,000 timesteps
 -Uses the latest reward_history[-1] as Optuna's optimization target
 
@@ -88,6 +88,7 @@ CMD ["python3", "main.py", "--mode", "train", "--env", "MortalKombatII-Genesis"]
 
 **Detailed Breakdown:**
 -Similar structure to tuning_ppo.py but uses HPPO instead
+
 -Additional hyperparameters:
     -manager_lr, worker_lr: separate learning rates
     -option_duration: controls how frequently the manager switches options
@@ -134,11 +135,13 @@ Not part of final Easy Mode PPO/HPPO setup
 
 ### `retros.py`
 **Purpose:** Defines custom wrappers to modify frame skip behavior for retro games.
+
 **Detailed Breakdown:**
 -StochasticFrameSkip class:
     -Takes n steps per action
     -Randomly repeats previous action with probability stickprob
     -Useful for simulating sticky keys and improving robustness
+    
 **Notes:**
 Important for PPO and HPPO training diversity
 Used across training and tuning scripts
