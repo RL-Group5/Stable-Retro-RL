@@ -63,7 +63,9 @@ CMD ["python3", "main.py", "--mode", "train", "--env", "MortalKombatII-Genesis"]
 
 ---
 ### `tuning_ppo.py`
+
 **Purpose:**  This script performs automated hyperparameter tuning for the PPO agent using Optuna. The goal is to optimize PPO-specific parameters like learning rates, clipping epsilon, and GAE parameters within the Mortal Kombat II environment.
+
 **Detailed Breakdown:**
 -Libraries: Uses optuna, retro, and Stable-Baselines3 wrappers to handle environment and PPO logic.
 make_env() function: Initializes the Retro environment with a specific game state, applies StochasticFrameSkip, and wraps it with DeepMind-style preprocessing (WarpFrame). Returns an environment constructor.
@@ -74,13 +76,16 @@ make_env() function: Initializes the Retro environment with a specific game stat
     -steps_batch, updates_per_iteration, frame_skip, stickprob: sampling and dynamics tuning
 -Trains the PPO agent using these parameters for 50,000 timesteps
 -Uses the latest reward_history[-1] as Optuna's optimization target
+
 **Notes:**
 -PPO implementation is custom (not Stable-Baselines3 PPO)
 -Tightly coupled with ppo.py implementation logic
 
 ---
 ### `tuning_hppo.py`
+
 **Purpose:** Performs hyperparameter optimization for Hierarchical PPO (HPPO), tuning both manager and worker policies.
+
 **Detailed Breakdown:**
 -Similar structure to tuning_ppo.py but uses HPPO instead
 -Additional hyperparameters:
@@ -89,6 +94,7 @@ make_env() function: Initializes the Retro environment with a specific game stat
     -clip_ratio, steps_per_epoch, train_epochs
 -Vectorized environment (SubprocVecEnv) and frame stackers are used
 -Returns the final reward as optimization score
+
 **Notes:**
 Designed to explore temporal abstraction through options
 Heavily references hppo.py for internal model behavior
@@ -96,11 +102,14 @@ Heavily references hppo.py for internal model behavior
 ---
 
 ### `tuning_meta.py`
+
 **Purpose:** Tune a Meta-Learning version of PPO (not ultimately used in final evaluation).
+
 **Detailed Breakdown:**
 -Similar structure to tuning_ppo.py, but references a meta-wrapper over PPO
 -Uses Optuna to optimize both inner PPO hyperparameters and meta-specific learning rates
 -Includes logic for running multiple sampled environments or seeds (implied by task_sampler in meta.py)
+
 **Notes:**
 Useful for research purposes or generalization studies
 Not part of final Easy Mode PPO/HPPO setup
@@ -109,6 +118,7 @@ Not part of final Easy Mode PPO/HPPO setup
 
 ### `train_hppo.py`
 **Purpose:** CLI entry script for training the HPPO agent with logging and saving functionality.
+
 **Detailed Breakdown:**
 -CLI parser to set arguments for:
     -Game, State, Scenario
@@ -203,7 +213,9 @@ Handles reward normalization and logging internally
 
 ---
 ## `meta.py`
+
 **Purpose:**  Meta-learning wrapper to adapt PPO across multiple tasks.
+
 **Detailed Breakdown:**
 Meta class:
 Wraps PPO model
@@ -212,13 +224,18 @@ Contains outer-loop (meta) learning rate
 Intended for tasks with non-stationary dynamics
 Notes:
 Not used in the final Mortal Kombat experiments
+
 ---
+
 ## `setup.py`
+
 **Purpose:** CMake-based setup script to compile the native Retro emulator backend.
+
 **Detailed Breakdown:**
 CMakeBuild: custom setuptools extension
 -Detects Python paths, calls cmake, builds C++ files
 -Installs native .dylib or .so libraries required for Retro gameplay rendering and logic
+
 **Notes:**
 -Required only if building stable-retro from source
 -Can be skipped if using Homebrew installation
