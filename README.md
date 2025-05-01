@@ -15,3 +15,6 @@ employ Mortal Kombat II within the stable-retro framework, a visually rich and
 action-dense environment. Additionally, we implement parallelized training to
 ensure scalability and consistent learning across both approaches._
 
+https://github.com/user-attachments/assets/287662f5-7f15-4884-9feb-cc0aa19f0ce2
+
+
