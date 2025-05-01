@@ -16,3 +16,5 @@ action-dense environment. Additionally, we implement parallelized training to
 ensure scalability and consistent learning across both approaches._
 
 https://github.com/user-attachments/assets/287662f5-7f15-4884-9feb-cc0aa19f0ce2
+
+[Here](https://docs.google.com/document/d/1Ok54YcnYGqq05865gMfNH9CNSzpf-D4Dv7lmhXZYbNI/edit?usp=sharing) is thorough documentation of the class, methods, and functions used in the completion of the final project.
