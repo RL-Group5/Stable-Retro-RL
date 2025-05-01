@@ -17,4 +17,8 @@ ensure scalability and consistent learning across both approaches._
 
 https://github.com/user-attachments/assets/287662f5-7f15-4884-9feb-cc0aa19f0ce2
 
+Below we have the rewards from PPO vs HPPO. We can clearly see how well HPPO Learns and 
+how stable it is compared to PPO.
+![Image](https://github.com/user-attachments/assets/e5df1d88-a9f0-4250-85e0-c1bcdd97cfc4)
 
+![image](https://github.com/user-attachments/assets/3c02fb68-2351-4ac2-8f8f-ff5472428f13)
